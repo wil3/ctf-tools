@@ -75,4 +75,4 @@ if __name__ == '__main__':
         username = args[1]
         password = args[2]
         a = Attacker(exploitdir, username, password)
-        #a.run()
+        a.run()
