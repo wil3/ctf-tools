@@ -20,17 +20,14 @@ class Attacker:
         self.delay = 5 
 
         i = iCTF()
-        auth = i.login(email, password)
-        self.team = Team(auth, email)
-        print "Auth" , str(auth)
-        print "VPN ",   self.team.get_vpn_config('team_vpn')
+        self.team = i.login(email, password)
 
     def run(self):
         tick = self.team.get_tick_info()
         lasttick = tick['tick_id']
         while True:
-
             tick = self.team.get_tick_info()
+            self.logger.debug("Current tick " + str(tick))
             if lasttick != tick:
                 self._attackVictims()
                 lastick = tick
