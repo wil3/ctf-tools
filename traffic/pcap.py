@@ -5,17 +5,22 @@ import netaddr
 import socket
 import urllib
 import requests
+import traceback
 
 class TrafficAnalyzer:
     GEOIP_ENDPOINT = "http://ip-api.com/json"
 
-    def __init__(self, interface="eth0"):
+    def __init__(self, pcap, interface="eth0"):
         self.interface = interface
         self.iptogeo = {}
+        self.pcap = pcap
+                
+
 
     def open(self, pcap_file):
         self.f = open(pcap_file)
         self.pcap = dpkt.pcap.Reader(f)
+
     def close(self):
         self.f.close()
 
@@ -70,6 +75,81 @@ class TrafficAnalyzer:
                 ip.src
             except:
                 pass
+
+    def _decode_dns(self, rr):
+        r_type = rr.type
+        r_data = rr.rdata
+        print rr.name
+        if r_type == dpkt.dns.DNS_A  :
+           print socket.inet_ntoa( r_data )
+        elif r_type == dpkt.dns.DNS_AAAA :
+           print  socket.inet_ntop( socket.AF_INET6, r_data )
+
+    def _whitelisted(self, query):
+        whitelist = ['msftncsi.com', 'microsoft.com', 'windows.com']
+        for q in query:
+            for domain in whitelist:
+                if q.name in domain:
+                    return True
+        return False
+
+    def failed_dns(self):
+        nxdomain = 0
+        valid = 0
+        with open(self.pcap, 'rb') as f:
+            self.pcap = dpkt.pcap.Reader(f)
+            #self.pcap.setfilter('udp dst port 53')
+            for ts, pkt in self.pcap:
+                try:
+                    eth = dpkt.ethernet.Ethernet(pkt)
+                    ip = eth.data
+                    """
+                    if len(udp) > 0:
+                        print udp
+                        dns = dpkt.dns.DNS(udp.data)
+                        print dns
+                    """
+                    if type(ip.data) is dpkt.udp.UDP:
+                        udp = ip.data
+                        #we just want responses
+                        if udp.sport == 53 : 
+                            dns = dpkt.dns.DNS(udp.data)
+                            
+
+
+                            if dns.qr == dpkt.dns.DNS_R:
+                                #What is being quiered?
+                                if self._whitelisted(dns.qd):
+                                    continue
+
+                                print dns.qd[0].name
+                                #for qd in dns.qd:
+                                #    pass
+                                    #print qd.name
+                                if dns.rcode  == dpkt.dns.DNS_RCODE_NOERR :
+                                    valid = valid + 1
+                                    for rr in dns.an:
+                                        self._decode_dns(rr)
+                                elif dns.rcode == dpkt.dns.DNS_RCODE_NXDOMAIN :
+                                    print "NXDOMAIN"
+                                    nxdomain = nxdomain + 1
+
+                                #print dns.qr
+                                #print dns.aa
+                                #print dns.ar
+                                #print dir(dns)
+#print dir(udp)
+                            #print ""
+                    if type(ip.data) is dpkt.tcp.TCP:
+                        http = dpkt.http.Response(ip.data.data)
+                        if http.status == 404: 
+                            pass
+
+                except:
+                    traceback.print_exc()
+
+        return (valid, nxdomain)
+
     def _process(self):
         for ts, pkt in self.pcap:
             try:
@@ -90,8 +170,9 @@ if __name__ == "__main__":
     parser = OptionParser(usage=usage) 
     (options, args) = parser.parse_args()
     pcap = args[0]
-    traffic = TrafficAnalyzer()
+    traffic = TrafficAnalyzer(pcap)
+    traffic.failed_dns()
     #traffic.open(pcap)
     #traffic.process()
-    traffic.get_location()
+    #traffic.get_location()
     #traffic.close()
